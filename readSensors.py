@@ -2,7 +2,7 @@ import requests
 import json
 from influxdb import InfluxDBClient
 
-client = InfluxDBClient("192.168.2.253", 8086, "root", "", "cultivate")
+#client = InfluxDBClient("192.168.2.253", 8086, "root", "", "cultivate")
 
 def read():
     url = "http://192.168.2.97/rpc"
@@ -10,7 +10,7 @@ def read():
 
     # Example echo method
     payload = {
-        "method": "Sum",
+        "method": "ADC",
         "params": [""],
         "jsonrpc": "2.0",
         "id": 0,
@@ -30,8 +30,8 @@ def read():
                     }
                 }
             ]
-    print(json_body)
-    client.write_points(json_body)
+    print(response["result"])
+    #client.write_points(json_body)
 
 
 
