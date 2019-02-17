@@ -1,5 +1,5 @@
-load('api_aws.js');
-load('api_azure.js');
+//load('api_aws.js');
+//load('api_azure.js');
 load('api_config.js');
 load('api_dash.js');
 load('api_events.js');
@@ -13,32 +13,50 @@ load('api_watson.js');
 load('api_adc.js');
 load('api_http.js');
 load('api_rpc.js');
+load('api_dht.js');
+load('api_net.js');
+load('api_esp32.js');
 
-let btn = Cfg.get('board.btn1.pin');              // Built-in button GPIO
-let led = Cfg.get('board.led1.pin');              // Built-in LED GPIO number
-let onhi = Cfg.get('board.led1.active_high');     // LED on when high?
+
+
+
+
+//let btn = Cfg.get('board.btn1.pin');              // Built-in button GPIO
+//let led = Cfg.get('board.led1.pin');              // Built-in LED GPIO number
+//let onhi = Cfg.get('board.led1.active_high');     // LED on when high?
 let state = {on: false, btnCount: 0, uptime: 0};  // Device state
 let online = false;                               // Connected to the cloud?
-let moisturePin2 = 33;
+let ADC33 = 33;
+let dhtPin = 22;
+let deviceId = Cfg.get("device.id");
 
-let setLED = function(on) {
-  let level = onhi ? on : !on;
-  GPIO.write(led, level);
-  print('LED on ->', on);
-};
-
-GPIO.set_mode(led, GPIO.MODE_OUTPUT);
-setLED(state.on);
-
-ADC.enable(moisturePin2);
+ADC.enable(ADC33);
+let dht = DHT.create(dhtPin, DHT.DHT11);
 
 let readSensors = Timer.set(300, Timer.REPEAT, function() {
-  let n = ADC.read(moisturePin2);
-  state.moist1=n;
+  state.ADC33=ADC.read(ADC33);
+  state.temp=dht.getTemp();
+  state.humidity=dht.getHumidity();
 }, null);
 
-RPC.addHandler('Sum', function(args) {
-    return state.moist1;
+RPC.addHandler('ADC33', function(args) {
+    return state.ADC33;
+    
+});
+
+let saveSensors = Timer.set(60*1000, Timer.REPEAT, function() {
+
+  HTTP.query({
+    url: 'http://kiefershohe.nimling.com/sensordata/toinflux.php?temp='+JSON.stringify(state.temp)+'&moist='+JSON.stringify(state.ADC33)+'&dev='+JSON.stringify(deviceId)+'&hum='+JSON.stringify(state.humidity),  // replace with your own endpoint',
+    success: function(body, full_http_msg) { print(body); }
+    //error: function(err) { print(err); },  // Optional
+  });
+
+
+}, null);
+
+RPC.addHandler('DHT', function(args) {
+  return state.dht;
 });
 
 let reportState = function() {
@@ -46,7 +64,7 @@ let reportState = function() {
 };
 
 // Update state every second, and report to cloud if online
-Timer.set(1000, Timer.REPEAT, function() {
+Timer.set(60*1000, Timer.REPEAT, function() {
   state.uptime = Sys.uptime();
   state.ram_free = Sys.free_ram();
   print('online:', online, JSON.stringify(state));
@@ -60,7 +78,7 @@ Shadow.addHandler(function(event, obj) {
     for (let key in obj) {  // Iterate over all keys in delta
       if (key === 'on') {   // We know about the 'on' key. Handle it!
         state.on = obj.on;  // Synchronise the state
-        setLED(state.on);   // according to the delta
+        //setLED(state.on);   // according to the delta
       } else if (key === 'reboot') {
         state.reboot = obj.reboot;      // Reboot button clicked: that
         Timer.set(750, 0, function() {  // incremented 'reboot' counter
@@ -72,50 +90,7 @@ Shadow.addHandler(function(event, obj) {
   }
 });
 
-if (btn >= 0) {
-  let btnCount = 0;
-  let btnPull, btnEdge;
-  if (Cfg.get('board.btn1.pull_up') ? GPIO.PULL_UP : GPIO.PULL_DOWN) {
-    btnPull = GPIO.PULL_UP;
-    btnEdge = GPIO.INT_EDGE_NEG;
-  } else {
-    btnPull = GPIO.PULL_DOWN;
-    btnEdge = GPIO.INT_EDGE_POS;
-  }
-  GPIO.set_button_handler(btn, btnPull, btnEdge, 20, function() {
-    state.btnCount++;
-    let message = JSON.stringify(state);
-    let sendMQTT = true;
-    if (Azure.isConnected()) {
-      print('== Sending Azure D2C message:', message);
-      Azure.sendD2CMsg('', message);
-      sendMQTT = false;
-    }
-    if (GCP.isConnected()) {
-      print('== Sending GCP event:', message);
-      GCP.sendEvent(message);
-      sendMQTT = false;
-    }
-    if (Watson.isConnected()) {
-      print('== Sending Watson event:', message);
-      Watson.sendEventJSON('ev', {d: state});
-      sendMQTT = false;
-    }
-    if (Dash.isConnected()) {
-      print('== Click2!');
-      // TODO: Maybe do something else?
-      sendMQTT = false;
-    }
-    // AWS is handled as plain MQTT since it allows arbitrary topics.
-    if (AWS.isConnected() || (MQTT.isConnected() && sendMQTT)) {
-      let topic = 'devices/' + Cfg.get('device.id') + '/events';
-      print('== Publishing to ' + topic + ':', message);
-      MQTT.pub(topic, message, 0 /* QoS */);
-    } else if (sendMQTT) {
-      print('== Not connected!');
-    }
-  }, null);
-}
+
 
 Event.on(Event.CLOUD_CONNECTED, function() {
   online = true;
