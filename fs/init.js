@@ -27,27 +27,38 @@ load('api_esp32.js');
 let state = {on: false, btnCount: 0, uptime: 0};  // Device state
 let online = false;                               // Connected to the cloud?
 let ADC33 = 33;
+let ADC35 = 35;
 let dhtPin = 22;
 let deviceId = Cfg.get("device.id");
 
 ADC.enable(ADC33);
+ADC.enable(ADC35);
 let dht = DHT.create(dhtPin, DHT.DHT11);
 
 let readSensors = Timer.set(300, Timer.REPEAT, function() {
   state.ADC33=ADC.read(ADC33);
+  state.ADC35=ADC.read(ADC35);
   state.temp=dht.getTemp();
   state.humidity=dht.getHumidity();
 }, null);
 
 RPC.addHandler('ADC33', function(args) {
     return state.ADC33;
-    
+});
+
+RPC.addHandler('ADC35', function(args) {
+  return state.ADC35;
 });
 
 let saveSensors = Timer.set(60*1000, Timer.REPEAT, function() {
 
   HTTP.query({
-    url: 'http://kiefershohe.nimling.com/sensordata/toinflux.php?temp='+JSON.stringify(state.temp)+'&moist='+JSON.stringify(state.ADC33)+'&dev='+JSON.stringify(deviceId)+'&hum='+JSON.stringify(state.humidity),  // replace with your own endpoint',
+    url: 'http://kiefershohe.nimling.com/sensordata/toinflux.php?temp='+JSON.stringify(state.temp)+'&moist='+JSON.stringify(state.ADC33)+'&dev='+JSON.stringify(deviceId+'_1')+'_1&hum='+JSON.stringify(state.humidity),  // replace with your own endpoint',
+    success: function(body, full_http_msg) { print(body); }
+    //error: function(err) { print(err); },  // Optional
+  });
+  HTTP.query({
+    url: 'http://kiefershohe.nimling.com/sensordata/toinflux.php?temp='+JSON.stringify(state.temp)+'&moist='+JSON.stringify(state.ADC35)+'&dev='+JSON.stringify(deviceId+'_2')+'&hum='+JSON.stringify(state.humidity),  // replace with your own endpoint',
     success: function(body, full_http_msg) { print(body); }
     //error: function(err) { print(err); },  // Optional
   });
